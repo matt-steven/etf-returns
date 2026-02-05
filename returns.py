@@ -198,7 +198,8 @@ if __name__ == "__main__":
     end_price_final, start_price_final = get_prices_for_period(arg_ticker, arg_timeframe)
     result = calc_price_return(end_price_final, start_price_final)
 
-    print(f"{result:.2f}%")
+    sign = "+" if result > 0 else "-"
+    print(f"Start: {start_price_final} Current: {end_price_final} ({sign}{result:.2f}%)")
 
 # just used for unit testing, wouldnt normally use global like that
 def unittest_setup():

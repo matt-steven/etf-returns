@@ -95,40 +95,9 @@ def get_last_close_date(ticker, start_date):
     return last_close_date
 
 
-def get_prices_for_period(ticker, timeframe):
-    end_date = date(2024, 12, 31)
-    start_date = end_date - timedelta(days=TIMEFRAMES[timeframe])
-
-    # Handle potential ticker changes
-    aka_tickers = []
-    if ticker in ticker_changes_data:
-        aka_tickers = handle_ticker_change(ticker)
-    aka_tickers.append(ticker)
-
-    # When date is a weekend or holiday, find last close price
-    if start_date.strftime("%Y-%m-%d") not in price_data[ticker]:
-        start_date = get_last_close_date(ticker, start_date)
-        if not start_date:
-            print(f"Requested period for {ticker} not found")
-            sys.exit(1)
-
-    end_date_str = end_date.strftime("%Y-%m-%d")
-    start_date_str = start_date.strftime("%Y-%m-%d")
-
-    end_close_price = float(price_data[ticker][end_date_str])
-    start_close_price = float(price_data[ticker][start_date_str])
-
-    # Handle split if one has occurred during period
-    for aka_ticker in aka_tickers:
-        if aka_ticker in splits_data:
-            start_close_price = handle_split_calculation(aka_ticker, start_date,
-                                                         end_date, start_close_price)
-
-    print(f"Period {start_date_str} to {end_date_str}")
-    return end_close_price, start_close_price
-
-
 def get_invest_return(ticker_prices, customer_id):
+    total_return = 0
+
     for ticker, purchases in portfolio_data[customer_id].items():
         end_price = ticker_prices[ticker]['end_price']
         start_price = ticker_prices[ticker]['start_price']
@@ -139,11 +108,17 @@ def get_invest_return(ticker_prices, customer_id):
             purchase_date = purchase['purchase_date']
             shares_qty = purchase['shares_qty']
             cost_basis = purchase['cost_basis']
-            
-            current_value = end_price * int(shares_qty)
-            original_value = float(cost_basis) * int(shares_qty)
-            investment_return = current_value - original_value
-            
+
+            if datetime.strptime(purchase_date, "%Y-%m-%d").date() <= start_date:
+                current_value = end_price * int(shares_qty)
+                original_value = float(cost_basis) * int(shares_qty)
+                period_return = current_value - original_value
+                total_return += period_return
+                print(f"{ticker}: {period_return:.2f}")
+    
+    sign = "+" if total_return > 0 else "-"
+    print(f"Overall: {sign}{total_return:.2f}")
+
 
 def get_ticker_prices_for_timeframe(customer_id, timeframe):
     end_date = date(2024, 12, 31)
@@ -277,13 +252,10 @@ if __name__ == "__main__":
         print("Example: returns.py CUST001 '6 months'")
         sys.exit(1)
 
-    print(f"Investment return for {arg_customer} for {arg_timeframe}")
+    print(f"{arg_customer} investment return over {arg_timeframe}")
 
     prices = get_ticker_prices_for_timeframe(arg_customer, arg_timeframe)
-    result = get_invest_return(prices, arg_customer)
-
-    sign = "+" if end_price_final-start_price_final > 0 else '-'
-    print(f"Price change: {sign}{(end_price_final-start_price_final):.2f} ({sign}{result:.2f}%)")
+    get_invest_return(prices, arg_customer)
 
 # just used for unit testing, wouldnt normally use global like that
 def unittest_setup():
