@@ -1,0 +1,22 @@
+Problem Statement
+You have been provided with just over a year's worth of end-of-day prices for several ETFs in the file 'prices.csv'. 
+Alongside, you are provided the files 'splits.csv' and 'ticker_changes.csv' containing (fictionalised) splits and ticker changes that affected the ETFs in 'prices.csv' during the 2024 calendar year. 
+Additionally, you are provided with 'portfolios.csv' containing customer portfolio positions with their purchase dates and quantities.
+
+Your task is to create a program that takes a customer ID and a timeframe (1 day, 5 days, 6 months, or 1 year) as input and returns the personal investment return for that customer's portfolio over the specified timeframe up to 2024-12-31. 
+In particular, the return calculation must be aware of ticker changes and properly account for how stock splits affect the investor's position.
+
+Specifics
+-	For each position in a customer's portfolio, the investment return is calculated using the cost base of the investment. 
+The cost base represents the original purchase price per unit of an ETF as at the purchase date, this is the price the investor paid for each share when they initially bought it. 
+The investment return is calculated as the current value of their position (shares owned × current price) minus their original investment (shares purchased × cost base per unit).
+
+-	A ticker change, as specified in the ‘ticker_changes.csv’ file, indicates that the ticker representing an ETF changed from ‘old_ticker’ to ‘new_ticker’ on the specified ‘effective_date’. 
+Hence, the prices will be quoted in terms of the old ticker up to the effective date, and in terms of the new ticker on and after.
+
+-	A split, as specified in the 'splits.csv' file, indicates that on the 'effective_date', 'from_quantity' units of the given ETF was converted to 'to_quantity' units. 
+For investor positions, if someone owned shares before the split date, their share count is multiplied by (to_quantity/from_quantity). For example, if someone owned 50 shares and a 1-to-10 split occurs, they would then own 500 shares.
+
+-	The program should run as a command-line executable that takes two arguments (the customer ID and the timeframe) as input and produces the customer's portfolio investment return (both dollar amount and percentage) as output.
+
+-	Make sure your code is written in a general way, so that it would work for arbitrary prices/splits/ticker changes and portfolio data, not just the data provided.

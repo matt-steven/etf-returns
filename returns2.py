@@ -17,6 +17,7 @@ TIMEFRAMES = {
 price_data = None
 splits_data = None
 ticker_changes_data = None
+portfolio_data = None
 
 
 def calc_price_return(end_price, start_price):
@@ -70,11 +71,11 @@ def sort_dates(dates):
     middle = len(dates) // 2
     left = sort_dates(dates[:middle])
     right = sort_dates(dates[middle:])
-    
+
     return merge_dates(left, right)
 
 def get_last_close_date(ticker, start_date):
-    # Dict is aleady sorted from input but sorting for case it isnt
+    # Dict is already sorted from input but sorting for case it isn't
     # Binary search to find it!
     all_dates = sort_dates(list(price_data[ticker].keys()))
     left = 0
@@ -117,7 +118,7 @@ def get_prices_for_period(ticker, timeframe):
     end_close_price = float(price_data[ticker][end_date_str])
     start_close_price = float(price_data[ticker][start_date_str])
 
-    # Handle split if one has occured during period
+    # Handle split if one has occurred during period
     for aka_ticker in aka_tickers:
         if aka_ticker in splits_data:
             start_close_price = handle_split_calculation(aka_ticker, start_date,
@@ -125,6 +126,63 @@ def get_prices_for_period(ticker, timeframe):
 
     print(f"Period {start_date_str} to {end_date_str}")
     return end_close_price, start_close_price
+
+
+def get_invest_return(ticker_prices, customer_id):
+    for ticker, purchases in portfolio_data[customer_id].items():
+        end_price = ticker_prices[ticker]['end_price']
+        start_price = ticker_prices[ticker]['start_price']
+        start_date = ticker_prices[ticker]['start_date']
+        end_date = ticker_prices[ticker]['end_date']
+        
+        for purchase in purchases:
+            purchase_date = purchase['purchase_date']
+            shares_qty = purchase['shares_qty']
+            cost_basis = purchase['cost_basis']
+            
+            current_value = end_price * int(shares_qty)
+            original_value = float(cost_basis) * int(shares_qty)
+            investment_return = current_value - original_value
+            
+
+def get_ticker_prices_for_timeframe(customer_id, timeframe):
+    end_date = date(2024, 12, 31)
+    start_date = end_date - timedelta(days=TIMEFRAMES[timeframe])
+    customer_data = portfolio_data[customer_id]
+
+    ticker_prices = {}
+    for ticker in customer_data:
+        aka_tickers = []
+        # Handle potential ticker changes
+        if ticker in ticker_changes_data:
+            aka_tickers = handle_ticker_change(ticker)
+        aka_tickers.append(ticker)
+        # When date is a weekend or holiday, find last close price
+        if start_date.strftime("%Y-%m-%d") not in price_data[ticker]:
+            start_date = get_last_close_date(ticker, start_date)
+            if not start_date:
+                print(f"Requested period for {ticker} not found")
+                sys.exit(1)
+
+        end_date_str = end_date.strftime("%Y-%m-%d")
+        start_date_str = start_date.strftime("%Y-%m-%d")
+
+        end_close_price = float(price_data[ticker][end_date_str])
+        start_close_price = float(price_data[ticker][start_date_str])
+
+        # Handle split if one has occurred during period
+        for aka_ticker in aka_tickers:
+            if aka_ticker in splits_data:
+                start_close_price = handle_split_calculation(aka_ticker, start_date,
+                                                            end_date, start_close_price)
+        ticker_prices[ticker] =  {
+            "start_price": start_close_price,
+            "end_price": end_close_price,
+            "start_date": start_date,
+            "end_date": end_date
+        }
+
+    return ticker_prices
 
 
 def read_ticker_changes_input():
@@ -177,28 +235,55 @@ def read_price_input():
         return data
 
 
-def valid_arguments(ticker, timeframe):
-    return len(sys.argv) == 3 and ticker in price_data and timeframe in TIMEFRAMES
+def read_portfolio_input():
+    data = {}
+    with open("portfolios.csv", encoding="utf-8") as portfolio_file:
+        reader = csv.DictReader(portfolio_file)
+        for row in reader:
+            customer_id = row["customer_id"]
+            ticker = row["ticker"]
+            purchase_date = row["purchase_date"]
+            shares_qty = row["shares"]
+            cost_basis = row["cost_basis"]
+
+            if customer_id not in data:
+                data[customer_id] = {}
+            if ticker not in data[customer_id]:
+                data[customer_id][ticker] = []
+
+            data[customer_id][ticker].append({
+                "purchase_date": purchase_date,
+                "shares_qty": shares_qty,
+                "cost_basis": cost_basis
+            })
+
+        return data
+
+
+def valid_arguments(customer_id, timeframe):
+    return len(sys.argv) == 3 and customer_id in portfolio_data and timeframe in TIMEFRAMES
 
 
 if __name__ == "__main__":
     price_data = read_price_input()
     splits_data = read_splits_input()
     ticker_changes_data = read_ticker_changes_input()
-    arg_ticker = sys.argv[1]
+    portfolio_data= read_portfolio_input()
+    arg_customer = sys.argv[1]
     arg_timeframe = sys.argv[2]
 
-    if not valid_arguments(arg_ticker, arg_timeframe):
-        print("Usage: returns.py <ticker> <'timeframe'>")
-        print("Example: returns.py NDQ '6 months'")
+    if not valid_arguments(arg_customer, arg_timeframe):
+        print("Usage: returns.py <customer_id> <'timeframe'>")
+        print("Example: returns.py CUST001 '6 months'")
         sys.exit(1)
 
-    print(f"Price return for {arg_ticker} for {arg_timeframe}")
+    print(f"Investment return for {arg_customer} for {arg_timeframe}")
 
-    end_price_final, start_price_final = get_prices_for_period(arg_ticker, arg_timeframe)
-    result = calc_price_return(end_price_final, start_price_final)
+    prices = get_ticker_prices_for_timeframe(arg_customer, arg_timeframe)
+    result = get_invest_return(prices, arg_customer)
 
-    print(f"{result:.2f}%")
+    sign = "+" if end_price_final-start_price_final > 0 else '-'
+    print(f"Price change: {sign}{(end_price_final-start_price_final):.2f} ({sign}{result:.2f}%)")
 
 # just used for unit testing, wouldnt normally use global like that
 def unittest_setup():
