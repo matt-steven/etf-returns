@@ -33,7 +33,26 @@ def handle_ticker_change(ticker):
     return changed_tickers
 
 
-def handle_split_calculation(ticker, start_date, end_date, price):
+
+def handle_split_customer_position(ticker, start_date, end_date, customer_portfolio):
+    purchases = customer_portfolio[ticker]
+    splits = splits_data[ticker]
+
+    for purchase in purchases:
+        for split_date_str, (from_quantity, to_quantity) in splits.items():
+            split_date = datetime.strptime(split_date_str, "%d/%m/%Y").date()
+            purchase_date = datetime.strptime(purchase['purchase_date'], "%Y-%m-%d").date()
+            # Did a split occur after purchase date
+            if purchase_date < split_date < end_date:
+                split_ratio = float(to_quantity) / float(from_quantity)
+                shares_qty = float(purchase['shares_qty'])
+                cost_basis = float(purchase['cost_basis'])
+                
+                purchase['shares_qty'] = str(shares_qty * split_ratio)
+                purchase['cost_basis'] = str(cost_basis / split_ratio)
+
+
+def handle_split_price(ticker, start_date, end_date, price):
     splits = splits_data[ticker]
     adjusted_price = price
     for split_date_str, split_ratio in splits.items():
@@ -98,11 +117,8 @@ def get_last_close_date(ticker, start_date):
 
 def get_invest_return(ticker_prices, customer_id):
     contribution_cost_total = 0
-    contribution_purchases = defaultdict(int)
     start_portfolio_total = 0
-    start_portfolio = defaultdict(int)
     current_portfolio_total = 0
-    current_portfolio = defaultdict(int)
 
     for ticker, purchases in portfolio_data[customer_id].items():
         end_price = ticker_prices[ticker]['end_price']
@@ -117,18 +133,15 @@ def get_invest_return(ticker_prices, customer_id):
 
             # did the customer own the shares before or on the period start date
             if datetime.strptime(purchase_date, "%Y-%m-%d").date() <= start_date:
-                start_value = start_price * int(shares_qty)
-                start_portfolio[ticker] += start_value
+                start_value = start_price * float(shares_qty)
                 start_portfolio_total += start_value
             # did the customer make any contributions during this period to exclude from return
             elif start_date < datetime.strptime(purchase_date, "%Y-%m-%d").date() <= end_date:
-                contribution_cost = float(cost_basis) * int(shares_qty)
-                contribution_purchases[ticker] += contribution_cost
+                contribution_cost = float(cost_basis) * float(shares_qty)
                 contribution_cost_total += contribution_cost
 
             # add up current value at end of period
-            current_value = end_price * int(shares_qty)
-            current_portfolio[ticker] += current_value
+            current_value = end_price * float(shares_qty)
             current_portfolio_total += current_value
 
     print(f"Start position: ${start_portfolio_total:.2f}")
@@ -178,8 +191,11 @@ def get_ticker_prices_for_timeframe(customer_id, timeframe):
         # Handle split if one has occurred during period
         for aka_ticker in aka_tickers:
             if aka_ticker in splits_data:
-                start_close_price = handle_split_calculation(aka_ticker, start_date,
+                start_close_price = handle_split_price(aka_ticker, start_date,
                                                             end_date, start_close_price)
+                if aka_ticker in customer_data:
+                    handle_split_customer_position(aka_ticker, start_date, end_date, customer_data)
+
         ticker_prices[ticker] =  {
             "start_price": start_close_price,
             "end_price": end_close_price,
@@ -298,4 +314,3 @@ def unittest_setup():
     price_data = read_price_input()
     splits_data = read_splits_input()
     ticker_changes_data = read_ticker_changes_input()
-    
