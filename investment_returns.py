@@ -6,17 +6,12 @@ So only the actual change of the tickers price is what is shown
 Splits and ticker changes are considered
 Takes customer ID and timeframe as input
 """
-import sys
 import csv
-from datetime import date, timedelta, datetime
+import sys
 from collections import defaultdict
+from datetime import date, datetime, timedelta
 
-TIMEFRAMES = {
-    "1 day": 1,
-    "5 days": 5,
-    "6 months": 182,
-    "1 year": 365
-}
+TIMEFRAMES = {"1 day": 1, "5 days": 5, "6 months": 182, "1 year": 365}
 
 price_data = None
 splits_data = None
@@ -53,6 +48,7 @@ def sort_dates(dates):
     right = sort_dates(dates[middle:])
 
     return merge_dates(left, right)
+
 
 def get_last_close_date(ticker, start_date):
     # Dict is already sorted from input but sorting for case it isn't
@@ -128,11 +124,11 @@ def get_invest_return(ticker_prices, customer_id):
             # Add up current value at end of period
             current_value = end_price * float(shares_qty)
             current_portfolio_total += current_value
-    
+
     return {
-        'start_total': start_portfolio_total,
-        'current_total': current_portfolio_total,
-        'contribution_total': contribution_cost_total   
+        "start_total": start_portfolio_total,
+        "current_total": current_portfolio_total,
+        "contribution_total": contribution_cost_total,
     }
 
 
@@ -157,7 +153,7 @@ def handle_split_customer_position(ticker, start_date, end_date, customer_portfo
                 split_ratio = float(to_quantity) / float(from_quantity)
                 shares_qty = float(purchase["shares_qty"])
                 cost_basis = float(purchase["cost_basis"])
-                
+
                 purchase["shares_qty"] = str(shares_qty * split_ratio)
                 purchase["cost_basis"] = str(cost_basis / split_ratio)
 
@@ -170,7 +166,7 @@ def handle_split_price(ticker, start_date, end_date, price):
         # Only action splits that have occurred within timeframe
         if start_date < split_date <= end_date:
             from_quantity, to_quantity = split_ratio
-            adjusted_price *= (float(from_quantity) / float(to_quantity))
+            adjusted_price *= float(from_quantity) / float(to_quantity)
     return adjusted_price
 
 
@@ -207,11 +203,11 @@ def get_ticker_prices_for_timeframe(customer_id, timeframe):
                 if aka_ticker in customer_data:
                     handle_split_customer_position(aka_ticker, start_date, end_date, customer_data)
 
-        ticker_prices[ticker] =  {
+        ticker_prices[ticker] = {
             "start_price": start_close_price,
             "end_price": end_close_price,
             "start_date": start_date,
-            "end_date": end_date
+            "end_date": end_date,
         }
 
     return ticker_prices
