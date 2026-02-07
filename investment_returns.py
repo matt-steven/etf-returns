@@ -83,8 +83,8 @@ def output_result(portfolio_return):
     # Handle customer with $0 at start of period
     if start_portfolio_total == 0:
         if contribution_cost_total > 0:
-            investment_return_dollar = (current_portfolio_total - contribution_cost_total)
-            investment_return_percentage = ( investment_return_dollar / contribution_cost_total) * 100
+            investment_return_dollar = current_portfolio_total - contribution_cost_total
+            investment_return_percentage = (investment_return_dollar / contribution_cost_total) * 100
         else:
             investment_return_dollar = 0
             investment_return_percentage = 0
@@ -108,16 +108,16 @@ def get_invest_return(ticker_prices, customer_id):
         end_date = ticker_prices[ticker]["end_date"]
 
         for purchase in purchases:
-            purchase_date = purchase["purchase_date"]
+            purchase_date = datetime.strptime(purchase["purchase_date"], "%Y-%m-%d").date()
             shares_qty = purchase["shares_qty"]
             cost_basis = purchase["cost_basis"]
 
             # Did the customer own the shares before or on the period start date
-            if datetime.strptime(purchase_date, "%Y-%m-%d").date() <= start_date:
+            if purchase_date <= start_date:
                 start_value = start_price * float(shares_qty)
                 start_portfolio_total += start_value
             # Did the customer make any contributions during this period to exclude from return
-            elif start_date < datetime.strptime(purchase_date, "%Y-%m-%d").date() <= end_date:
+            elif start_date < purchase_date <= end_date:
                 contribution_cost = float(cost_basis) * float(shares_qty)
                 contribution_cost_total += contribution_cost
 
@@ -178,19 +178,20 @@ def get_ticker_prices_for_timeframe(customer_id, timeframe):
     ticker_prices = {}
     for ticker in customer_data:
         aka_tickers = []
+        ticker_start_date = start_date
         # Handle potential ticker changes
         if ticker in ticker_changes_data:
             aka_tickers = handle_ticker_change(ticker)
         aka_tickers.append(ticker)
         # When date is a weekend or holiday, find last close price
-        if start_date.strftime("%Y-%m-%d") not in price_data[ticker]:
-            start_date = get_last_close_date(ticker, start_date)
-            if not start_date:
+        if ticker_start_date.strftime("%Y-%m-%d") not in price_data[ticker]:
+            ticker_start_date = get_last_close_date(ticker, ticker_start_date)
+            if not ticker_start_date:
                 print(f"Requested period for {ticker} not found")
                 sys.exit(1)
 
         end_date_str = end_date.strftime("%Y-%m-%d")
-        start_date_str = start_date.strftime("%Y-%m-%d")
+        start_date_str = ticker_start_date.strftime("%Y-%m-%d")
 
         end_close_price = float(price_data[ticker][end_date_str])
         start_close_price = float(price_data[ticker][start_date_str])
@@ -198,15 +199,15 @@ def get_ticker_prices_for_timeframe(customer_id, timeframe):
         # Handle split if one has occurred during period
         for aka_ticker in aka_tickers:
             if aka_ticker in splits_data:
-                start_close_price = handle_split_price(aka_ticker, start_date,
+                start_close_price = handle_split_price(aka_ticker, ticker_start_date,
                                                             end_date, start_close_price)
                 if aka_ticker in customer_data:
-                    handle_split_customer_position(aka_ticker, start_date, end_date, customer_data)
+                    handle_split_customer_position(aka_ticker, ticker_start_date, end_date, customer_data)
 
         ticker_prices[ticker] = {
             "start_price": start_close_price,
             "end_price": end_close_price,
-            "start_date": start_date,
+            "start_date": ticker_start_date,
             "end_date": end_date,
         }
 
