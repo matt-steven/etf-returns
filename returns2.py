@@ -1,7 +1,10 @@
 """
-Calculates price return for an ETF over a period of time
+Calculates investment return for a customer's portfolio over a period of time
+Using the portfolios start position and end position of the period
+Customer contributions during the period are excluded in the return
+So only the actual change of the tickers price is what is shown
 Splits and ticker changes are considered
-Takes ETF ticker and timeframe as inputs
+Takes customer ID and timeframe as input
 """
 import sys
 import csv
@@ -19,49 +22,6 @@ price_data = None
 splits_data = None
 ticker_changes_data = None
 portfolio_data = None
-
-
-def calc_price_return(end_price, start_price):
-    return (end_price / start_price - 1) * 100
-
-
-def handle_ticker_change(ticker):
-    changed_tickers = []
-    for _, changed_ticker in ticker_changes_data[ticker]:
-        price_data[ticker].update(price_data[changed_ticker])
-        changed_tickers.append(changed_ticker)
-    return changed_tickers
-
-
-
-def handle_split_customer_position(ticker, start_date, end_date, customer_portfolio):
-    purchases = customer_portfolio[ticker]
-    splits = splits_data[ticker]
-
-    for purchase in purchases:
-        for split_date_str, (from_quantity, to_quantity) in splits.items():
-            split_date = datetime.strptime(split_date_str, "%d/%m/%Y").date()
-            purchase_date = datetime.strptime(purchase['purchase_date'], "%Y-%m-%d").date()
-            # Did a split occur after purchase date
-            if purchase_date < split_date < end_date:
-                split_ratio = float(to_quantity) / float(from_quantity)
-                shares_qty = float(purchase['shares_qty'])
-                cost_basis = float(purchase['cost_basis'])
-                
-                purchase['shares_qty'] = str(shares_qty * split_ratio)
-                purchase['cost_basis'] = str(cost_basis / split_ratio)
-
-
-def handle_split_price(ticker, start_date, end_date, price):
-    splits = splits_data[ticker]
-    adjusted_price = price
-    for split_date_str, split_ratio in splits.items():
-        split_date = datetime.strptime(split_date_str, "%d/%m/%Y").date()
-        # Only action splits that have occurred within timeframe
-        if start_date < split_date < end_date:
-            from_quantity, to_quantity = split_ratio
-            adjusted_price *= (float(from_quantity) / float(to_quantity))
-    return adjusted_price
 
 
 def merge_dates(left, right):
@@ -84,7 +44,7 @@ def merge_dates(left, right):
 
 
 def sort_dates(dates):
-    # Merge sort !
+    # Merge sort!
     if len(dates) <= 1:
         return dates
 
@@ -115,40 +75,16 @@ def get_last_close_date(ticker, start_date):
     return last_close_date
 
 
-def get_invest_return(ticker_prices, customer_id):
-    contribution_cost_total = 0
-    start_portfolio_total = 0
-    current_portfolio_total = 0
-
-    for ticker, purchases in portfolio_data[customer_id].items():
-        end_price = ticker_prices[ticker]['end_price']
-        start_price = ticker_prices[ticker]['start_price']
-        start_date = ticker_prices[ticker]['start_date']
-        end_date = ticker_prices[ticker]['end_date']
-
-        for purchase in purchases:
-            purchase_date = purchase['purchase_date']
-            shares_qty = purchase['shares_qty']
-            cost_basis = purchase['cost_basis']
-
-            # did the customer own the shares before or on the period start date
-            if datetime.strptime(purchase_date, "%Y-%m-%d").date() <= start_date:
-                start_value = start_price * float(shares_qty)
-                start_portfolio_total += start_value
-            # did the customer make any contributions during this period to exclude from return
-            elif start_date < datetime.strptime(purchase_date, "%Y-%m-%d").date() <= end_date:
-                contribution_cost = float(cost_basis) * float(shares_qty)
-                contribution_cost_total += contribution_cost
-
-            # add up current value at end of period
-            current_value = end_price * float(shares_qty)
-            current_portfolio_total += current_value
+def output_result(portfolio_return):
+    start_portfolio_total = portfolio_return["start_total"]
+    current_portfolio_total = portfolio_return["current_total"]
+    contribution_cost_total = portfolio_return["contribution_total"]
 
     print(f"Start position: ${start_portfolio_total:.2f}")
     print(f"Current position: ${current_portfolio_total:.2f}")
     print(f"Contributions made during period: ${contribution_cost_total:.2f}")
 
-    # handle customer with $0 at start of period
+    # Handle customer with $0 at start of period
     if start_portfolio_total == 0:
         if contribution_cost_total > 0:
             investment_return_dollar = (current_portfolio_total - contribution_cost_total)
@@ -159,8 +95,83 @@ def get_invest_return(ticker_prices, customer_id):
     else:
         investment_return_dollar = current_portfolio_total - start_portfolio_total - contribution_cost_total
         investment_return_percentage = (investment_return_dollar / start_portfolio_total) * 100
+
     sign = "+" if investment_return_dollar > 0 else ""
     print(f"Overall return: ${sign}{investment_return_dollar:.2f} ({sign}{investment_return_percentage:.2f}%)")
+
+
+def get_invest_return(ticker_prices, customer_id):
+    contribution_cost_total = 0
+    start_portfolio_total = 0
+    current_portfolio_total = 0
+
+    for ticker, purchases in portfolio_data[customer_id].items():
+        end_price = ticker_prices[ticker]["end_price"]
+        start_price = ticker_prices[ticker]["start_price"]
+        start_date = ticker_prices[ticker]["start_date"]
+        end_date = ticker_prices[ticker]["end_date"]
+
+        for purchase in purchases:
+            purchase_date = purchase["purchase_date"]
+            shares_qty = purchase["shares_qty"]
+            cost_basis = purchase["cost_basis"]
+
+            # Did the customer own the shares before or on the period start date
+            if datetime.strptime(purchase_date, "%Y-%m-%d").date() <= start_date:
+                start_value = start_price * float(shares_qty)
+                start_portfolio_total += start_value
+            # Did the customer make any contributions during this period to exclude from return
+            elif start_date < datetime.strptime(purchase_date, "%Y-%m-%d").date() <= end_date:
+                contribution_cost = float(cost_basis) * float(shares_qty)
+                contribution_cost_total += contribution_cost
+
+            # Add up current value at end of period
+            current_value = end_price * float(shares_qty)
+            current_portfolio_total += current_value
+    
+    return {
+        'start_total': start_portfolio_total,
+        'current_total': current_portfolio_total,
+        'contribution_total': contribution_cost_total   
+    }
+
+
+def handle_ticker_change(ticker):
+    changed_tickers = []
+    for _, changed_ticker in ticker_changes_data[ticker]:
+        price_data[ticker].update(price_data[changed_ticker])
+        changed_tickers.append(changed_ticker)
+    return changed_tickers
+
+
+def handle_split_customer_position(ticker, start_date, end_date, customer_portfolio):
+    purchases = customer_portfolio[ticker]
+    splits = splits_data[ticker]
+
+    for purchase in purchases:
+        for split_date_str, (from_quantity, to_quantity) in splits.items():
+            split_date = datetime.strptime(split_date_str, "%d/%m/%Y").date()
+            purchase_date = datetime.strptime(purchase["purchase_date"], "%Y-%m-%d").date()
+            # Did a split occur after purchase date
+            if purchase_date < split_date <= end_date:
+                split_ratio = float(to_quantity) / float(from_quantity)
+                shares_qty = float(purchase["shares_qty"])
+                cost_basis = float(purchase["cost_basis"])
+                
+                purchase["shares_qty"] = str(shares_qty * split_ratio)
+                purchase["cost_basis"] = str(cost_basis / split_ratio)
+
+
+def handle_split_price(ticker, start_date, end_date, price):
+    splits = splits_data[ticker]
+    adjusted_price = price
+    for split_date_str, split_ratio in splits.items():
+        split_date = datetime.strptime(split_date_str, "%d/%m/%Y").date()
+        # Only action splits that have occurred within timeframe
+        if start_date < split_date <= end_date:
+            from_quantity, to_quantity = split_ratio
+            adjusted_price *= (float(from_quantity) / float(to_quantity))
+    return adjusted_price
 
 
 def get_ticker_prices_for_timeframe(customer_id, timeframe):
@@ -207,7 +218,7 @@ def get_ticker_prices_for_timeframe(customer_id, timeframe):
 
 
 def read_ticker_changes_input():
-    data = {}
+    data = defaultdict(list)
     with open("ticker_changes.csv", encoding="utf-8") as ticker_changes_file:
         reader = csv.DictReader(ticker_changes_file)
         for row in reader:
@@ -215,18 +226,13 @@ def read_ticker_changes_input():
             effective_date = row["effective_date"]
             new_ticker = row["new_ticker"]
 
-            if old_ticker not in data:
-                data[old_ticker] = []
             data[old_ticker].append([effective_date, new_ticker])
-
-            if new_ticker not in data:
-                data[new_ticker] = []
             data[new_ticker].append([effective_date, old_ticker])
         return data
 
 
 def read_splits_input():
-    data = {}
+    data = defaultdict(dict)
     with open("splits.csv", encoding="utf-8") as splits_file:
         reader = csv.DictReader(splits_file)
         for row in reader:
@@ -235,14 +241,12 @@ def read_splits_input():
             from_quantity = row["from_quantity"]
             to_quantity = row["to_quantity"]
 
-            if ticker not in data:
-                data[ticker] = {}
             data[ticker][effective_date] = [from_quantity, to_quantity]
         return data
 
 
 def read_price_input():
-    data = {}
+    data = defaultdict(dict)
     with open("prices.csv", encoding="utf-8") as price_file:
         reader = csv.DictReader(price_file)
         for row in reader:
@@ -250,14 +254,12 @@ def read_price_input():
             close_date = row["date"]
             close_price = row["close_price"]
 
-            if ticker not in data:
-                data[ticker] = {}
             data[ticker][close_date] = close_price
         return data
 
 
 def read_portfolio_input():
-    data = {}
+    data = defaultdict(lambda: defaultdict(list))
     with open("portfolios.csv", encoding="utf-8") as portfolio_file:
         reader = csv.DictReader(portfolio_file)
         for row in reader:
@@ -266,11 +268,6 @@ def read_portfolio_input():
             purchase_date = row["purchase_date"]
             shares_qty = row["shares"]
             cost_basis = row["cost_basis"]
-
-            if customer_id not in data:
-                data[customer_id] = {}
-            if ticker not in data[customer_id]:
-                data[customer_id][ticker] = []
 
             data[customer_id][ticker].append({
                 "purchase_date": purchase_date,
@@ -286,24 +283,28 @@ def valid_arguments(customer_id, timeframe):
 
 
 if __name__ == "__main__":
+    # Setup
     price_data = read_price_input()
     splits_data = read_splits_input()
     ticker_changes_data = read_ticker_changes_input()
-    portfolio_data= read_portfolio_input()
+    portfolio_data = read_portfolio_input()
+
+    # Handle arguments
     arg_customer = sys.argv[1]
     arg_timeframe = sys.argv[2]
-
     if not valid_arguments(arg_customer, arg_timeframe):
         print("Usage: returns.py <customer_id> <'timeframe'>")
         print("Example: returns.py CUST001 '6 months'")
         sys.exit(1)
-
     print(f"{arg_customer} investment return over {arg_timeframe}")
 
-    prices = get_ticker_prices_for_timeframe(arg_customer, arg_timeframe)
-    get_invest_return(prices, arg_customer)
+    # Get start and end prices for each ticker in customer portfolio
+    # Then calculate the return of the entire portfolio for the period
+    ticker_prices = get_ticker_prices_for_timeframe(arg_customer, arg_timeframe)
+    return_total = get_invest_return(ticker_prices, arg_customer)
+    output_result(return_total)
 
-# used for unit testing, wouldn't normally use global like that
+# Used for unit testing, wouldn't normally use global like that
 def unittest_setup():
     global price_data
     global splits_data
