@@ -6,6 +6,7 @@ Takes ETF ticker and timeframe as inputs
 import sys
 import csv
 from datetime import date, timedelta, datetime
+from collections import defaultdict
 
 TIMEFRAMES = {
     "1 day": 1,
@@ -96,28 +97,57 @@ def get_last_close_date(ticker, start_date):
 
 
 def get_invest_return(ticker_prices, customer_id):
-    total_return = 0
+    contribution_cost_total = 0
+    contribution_purchases = defaultdict(int)
+    start_portfolio_total = 0
+    start_portfolio = defaultdict(int)
+    current_portfolio_total = 0
+    current_portfolio = defaultdict(int)
 
     for ticker, purchases in portfolio_data[customer_id].items():
         end_price = ticker_prices[ticker]['end_price']
         start_price = ticker_prices[ticker]['start_price']
         start_date = ticker_prices[ticker]['start_date']
         end_date = ticker_prices[ticker]['end_date']
-        
+
         for purchase in purchases:
             purchase_date = purchase['purchase_date']
             shares_qty = purchase['shares_qty']
             cost_basis = purchase['cost_basis']
 
+            # did the customer own the shares before or on the period start date
             if datetime.strptime(purchase_date, "%Y-%m-%d").date() <= start_date:
-                current_value = end_price * int(shares_qty)
-                original_value = float(cost_basis) * int(shares_qty)
-                period_return = current_value - original_value
-                total_return += period_return
-                print(f"{ticker}: {period_return:.2f}")
-    
-    sign = "+" if total_return > 0 else "-"
-    print(f"Overall: {sign}{total_return:.2f}")
+                start_value = start_price * int(shares_qty)
+                start_portfolio[ticker] += start_value
+                start_portfolio_total += start_value
+            # did the customer make any contributions during this period to exclude from return
+            elif start_date < datetime.strptime(purchase_date, "%Y-%m-%d").date() <= end_date:
+                contribution_cost = float(cost_basis) * int(shares_qty)
+                contribution_purchases[ticker] += contribution_cost
+                contribution_cost_total += contribution_cost
+
+            # add up current value at end of period
+            current_value = end_price * int(shares_qty)
+            current_portfolio[ticker] += current_value
+            current_portfolio_total += current_value
+
+    print(f"Start position: ${start_portfolio_total:.2f}")
+    print(f"Current position: ${current_portfolio_total:.2f}")
+    print(f"Contributions made during period: ${contribution_cost_total:.2f}")
+
+    # handle customer with $0 at start of period
+    if start_portfolio_total == 0:
+        if contribution_cost_total > 0:
+            investment_return_dollar = (current_portfolio_total - contribution_cost_total)
+            investment_return_percentage = ( investment_return_dollar / contribution_cost_total) * 100
+        else:
+            investment_return_dollar = 0
+            investment_return_percentage = 0
+    else:
+        investment_return_dollar = current_portfolio_total - start_portfolio_total - contribution_cost_total
+        investment_return_percentage = (investment_return_dollar / start_portfolio_total) * 100
+    sign = "+" if investment_return_dollar > 0 else ""
+    print(f"Overall return: ${sign}{investment_return_dollar:.2f} ({sign}{investment_return_percentage:.2f}%)")
 
 
 def get_ticker_prices_for_timeframe(customer_id, timeframe):
@@ -257,7 +287,7 @@ if __name__ == "__main__":
     prices = get_ticker_prices_for_timeframe(arg_customer, arg_timeframe)
     get_invest_return(prices, arg_customer)
 
-# just used for unit testing, wouldnt normally use global like that
+# used for unit testing, wouldn't normally use global like that
 def unittest_setup():
     global price_data
     global splits_data
@@ -268,3 +298,4 @@ def unittest_setup():
     price_data = read_price_input()
     splits_data = read_splits_input()
     ticker_changes_data = read_ticker_changes_input()
+    
