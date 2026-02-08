@@ -1,4 +1,12 @@
+use clap::Parser;
 use serde::Deserialize;
+use std::collections::HashMap;
+
+#[derive(Parser)]
+pub struct Args {
+    pub customer_id: String,
+    pub timeframe: String,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct PriceRecord {
@@ -32,8 +40,24 @@ pub struct Portfolio {
 }
 
 #[derive(Debug)]
+pub struct Data {
+    pub prices: HashMap<String, HashMap<String, f64>>,
+    pub splits: HashMap<String, HashMap<String, [f64; 2]>>,
+    pub ticker_changes: HashMap<String, Vec<Vec<String>>>,
+    pub portfolios: HashMap<String, HashMap<String, Vec<PortfolioPurchase>>>,
+}
+
+#[derive(Debug)]
 pub struct PortfolioPurchase {
     pub purchase_date: String,
     pub shares_qty: f64,
     pub cost_basis: f64,
+}
+
+#[derive(Debug)]
+pub struct TickerPrice {
+    pub start_price: f64,
+    pub end_price: f64,
+    pub start_date: String,
+    pub end_date: String,
 }

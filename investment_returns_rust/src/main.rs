@@ -1,28 +1,27 @@
 mod readers;
 mod models;
+mod logic;
 
+use std::error::Error;
 use clap::Parser;
+use models::Data;
+use models::Args;
 
-#[derive(Parser)]
-struct Args {
-    customer_id: String,
-    timeframe: String,
-}
+fn main() -> Result<(), Box<dyn Error>> {
+    let mut data = Data {
+        prices: readers::read_prices()?,
+        splits: readers::read_splits()?,
+        ticker_changes: readers::read_ticker_changes()?,
+        portfolios: readers::read_portfolios()?,
+    };
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    println!("{} investment return over {}", args.customer_id, args.timeframe); 
 
-    let prices = readers::read_prices()?;
-    let splits = readers::read_splits()?;
-    let ticker_changes = readers::read_ticker_changes()?;
-    let portfolios = readers::read_portfolios()?;
+    let ticker_prices = logic::get_ticker_prices_for_timeframe(&mut data, &args);
 
-
-    println!("Hello, {} {}", args.customer_id, args.timeframe);
-    println!("{:#?}", prices);
-    println!("{:#?}", splits);
-    println!("{:#?}", ticker_changes);
-    println!("{:#?}", portfolios);
+    // let return_total = get_invest_return(ticker_prices, args.customer_id);
+    // output_result(return_total);
 
     Ok(())
 }
