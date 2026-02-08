@@ -5,6 +5,8 @@ use chrono::{NaiveDate, Duration};
 use crate::models::Data;
 use crate::models::Args;
 use crate::models::TickerPrice;
+use crate::models::PortfolioPurchase;
+
 
 fn get_timeframe_days(timeframe_str: &str) -> Option<i64> {
     match timeframe_str {
@@ -30,6 +32,35 @@ fn get_last_close_date(ticker_prices: &HashMap<String, f64>, start_date: NaiveDa
     }
 
     last_date
+}
+
+fn handle_split_customer_position( purchases: &mut Vec<PortfolioPurchase>, splits: &HashMap<String, [f64; 2]>, end_date: NaiveDate,) {
+    for purchase in purchases.iter_mut() {
+        for (split_date_str, split_ratio) in splits {
+            let split_date = NaiveDate::parse_from_str(split_date_str, "%d/%m/%Y").unwrap();
+            let purchase_date = NaiveDate::parse_from_str(&purchase.purchase_date, "%Y-%m-%d").unwrap();
+
+            if purchase_date < split_date && split_date <= end_date {
+                let split_multiplier = split_ratio[1] / split_ratio[0];
+                purchase.shares_qty *= split_multiplier;
+                purchase.cost_basis /= split_multiplier;
+            }
+        }
+    }
+}
+
+fn handle_split_price( splits: &HashMap<String, [f64; 2]>, start_date: NaiveDate, end_date: NaiveDate, mut price: f64) -> f64 {
+    for (split_date_str, split_ratio) in splits {
+        let split_date = NaiveDate::parse_from_str(split_date_str, "%d/%m/%Y").unwrap();
+
+        if start_date < split_date && split_date <= end_date {
+            let from_quantity = split_ratio[0];
+            let to_quantity = split_ratio[1];
+            price *= from_quantity / to_quantity;
+        }
+    }
+
+    price
 }
 
 fn handle_ticker_change(
@@ -59,7 +90,7 @@ fn handle_ticker_change(
 }
 
 pub fn get_ticker_prices_for_timeframe(data: &mut Data, args: &Args) -> Result<HashMap<String, TickerPrice>, Box<dyn Error>> {
-    let ticker_prices: HashMap<String, TickerPrice> = HashMap::new();
+    let mut ticker_prices: HashMap<String, TickerPrice> = HashMap::new();
     let end_date = NaiveDate::from_ymd_opt(2024, 12, 31).unwrap();
     let no_of_days = get_timeframe_days(&args.timeframe).expect("Invalid timeframe");
     let start_date = end_date - Duration::days(no_of_days);
@@ -91,7 +122,23 @@ pub fn get_ticker_prices_for_timeframe(data: &mut Data, args: &Args) -> Result<H
             let end_close_price = ticker_price_data[&end_date_str];
             let mut start_close_price = ticker_price_data[&start_date_str];
 
-            println!("{:?} - {:?}",end_close_price, start_close_price)
+            // Split handling
+            for aka_ticker in &aka_tickers {
+                if let Some(splits) = data.splits.get(aka_ticker) {
+                    start_close_price = handle_split_price(splits, ticker_start_date, end_date, start_close_price);
+                    handle_split_customer_position(purchases, splits, end_date);
+                }
+            }
+
+            ticker_prices.insert(
+                ticker.clone(),
+                TickerPrice {
+                    start_price: start_close_price,
+                    end_price: end_close_price,
+                    start_date: start_date_str,
+                    end_date: end_date_str,
+                },
+            );
         }
     }
 
