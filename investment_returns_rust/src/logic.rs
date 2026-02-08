@@ -6,6 +6,7 @@ use crate::models::Data;
 use crate::models::Args;
 use crate::models::TickerPrice;
 use crate::models::PortfolioPurchase;
+use crate::models::PortfolioReturn;
 
 
 fn get_timeframe_days(timeframe_str: &str) -> Option<i64> {
@@ -18,7 +19,10 @@ fn get_timeframe_days(timeframe_str: &str) -> Option<i64> {
     }
 }
 
-fn get_last_close_date(ticker_prices: &HashMap<String, f64>, start_date: NaiveDate) -> Option<NaiveDate> {
+fn get_last_close_date(
+    ticker_prices: &HashMap<String, f64>, 
+    start_date: NaiveDate
+) -> Option<NaiveDate> {
     let mut last_date: Option<NaiveDate> = None;
 
     for date_str in ticker_prices.keys() {
@@ -30,11 +34,14 @@ fn get_last_close_date(ticker_prices: &HashMap<String, f64>, start_date: NaiveDa
             }
         }
     }
-
     last_date
 }
 
-fn handle_split_customer_position( purchases: &mut Vec<PortfolioPurchase>, splits: &HashMap<String, [f64; 2]>, end_date: NaiveDate,) {
+fn handle_split_customer_position(
+    purchases: &mut Vec<PortfolioPurchase>, 
+    splits: &HashMap<String, [f64; 2]>, 
+    end_date: NaiveDate
+) {
     for purchase in purchases.iter_mut() {
         for (split_date_str, split_ratio) in splits {
             let split_date = NaiveDate::parse_from_str(split_date_str, "%d/%m/%Y").unwrap();
@@ -59,7 +66,6 @@ fn handle_split_price( splits: &HashMap<String, [f64; 2]>, start_date: NaiveDate
             price *= from_quantity / to_quantity;
         }
     }
-
     price
 }
 
@@ -81,15 +87,89 @@ fn handle_ticker_change(
                     }
                 }
             }
-
             changed_tickers.push(changed_ticker.clone());
         }
     }
-
     changed_tickers
 }
 
-pub fn get_ticker_prices_for_timeframe(data: &mut Data, args: &Args) -> Result<HashMap<String, TickerPrice>, Box<dyn Error>> {
+pub fn output_result(portfolio_return: PortfolioReturn) {
+    let start_portfolio_total = portfolio_return.start_total;
+    let current_portfolio_total = portfolio_return.current_total;
+    let contribution_cost_total = portfolio_return.contribution_total;
+
+    println!("Start position: ${:.2}", start_portfolio_total);
+    println!("Current position: ${:.2}", current_portfolio_total);
+    println!("Contributions made during period: ${:.2}", contribution_cost_total);
+
+    let (investment_return_dollar, investment_return_percentage) = if start_portfolio_total == 0.0 {
+        if contribution_cost_total > 0.0 {
+            let dollar = current_portfolio_total - contribution_cost_total;
+            let percentage = (dollar / contribution_cost_total) * 100.0;
+            (dollar, percentage)
+        } else {
+            (0.0, 0.0)
+        }
+    } else {
+        let dollar = current_portfolio_total - start_portfolio_total - contribution_cost_total;
+        let percentage = (dollar / start_portfolio_total) * 100.0;
+        (dollar, percentage)
+    };
+
+    let sign = if investment_return_dollar > 0.0 {
+        "+"
+    } else {
+        ""
+    };
+
+    println!("Overall return: ${}{:.2} ({}{:.2}%)", sign, investment_return_dollar, sign, investment_return_percentage);
+}
+
+pub fn get_invest_return(
+    ticker_prices: &HashMap<String, TickerPrice>,
+    customer_data: &HashMap<String, Vec<PortfolioPurchase>>
+) -> PortfolioReturn {
+    let mut contribution_cost_total = 0.0;
+    let mut start_portfolio_total = 0.0;
+    let mut current_portfolio_total = 0.0;
+
+    for (ticker, purchases) in customer_data {
+        if let Some(price_info) = ticker_prices.get(ticker) {
+            let end_price = price_info.end_price;
+            let start_price = price_info.start_price;
+            let start_date = NaiveDate::parse_from_str(&price_info.start_date, "%Y-%m-%d").unwrap();
+            let end_date = NaiveDate::parse_from_str(&price_info.end_date, "%Y-%m-%d").unwrap();
+
+            for purchase in purchases {
+                let purchase_date = NaiveDate::parse_from_str(&purchase.purchase_date, "%Y-%m-%d").unwrap();
+                let shares_qty = purchase.shares_qty;
+                let cost_basis = purchase.cost_basis;
+
+                if purchase_date <= start_date {
+                    let start_value = start_price * shares_qty;
+                    start_portfolio_total += start_value;
+                } else if purchase_date > start_date && purchase_date <= end_date {
+                    let contribution_cost = cost_basis * shares_qty;
+                    contribution_cost_total += contribution_cost;
+                }
+
+                let current_value = end_price * shares_qty;
+                current_portfolio_total += current_value;
+            }
+        }
+    }
+
+    PortfolioReturn {
+        start_total: start_portfolio_total,
+        current_total: current_portfolio_total,
+        contribution_total: contribution_cost_total,
+    }
+}
+
+pub fn get_ticker_prices_for_timeframe(
+    data: &mut Data, 
+    args: &Args
+) -> Result<HashMap<String, TickerPrice>, Box<dyn Error>> {
     let mut ticker_prices: HashMap<String, TickerPrice> = HashMap::new();
     let end_date = NaiveDate::from_ymd_opt(2024, 12, 31).unwrap();
     let no_of_days = get_timeframe_days(&args.timeframe).expect("Invalid timeframe");
@@ -141,6 +221,5 @@ pub fn get_ticker_prices_for_timeframe(data: &mut Data, args: &Args) -> Result<H
             );
         }
     }
-
     Ok(ticker_prices)
 }

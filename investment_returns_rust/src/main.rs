@@ -18,10 +18,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     println!("{} investment return over {}", args.customer_id, args.timeframe); 
 
-    let ticker_prices = logic::get_ticker_prices_for_timeframe(&mut data, &args);
+    let ticker_prices = logic::get_ticker_prices_for_timeframe(&mut data, &args)?;
 
-    // let return_total = get_invest_return(ticker_prices, args.customer_id);
-    // output_result(return_total);
+    let customer_data = data.portfolios.get(&args.customer_id).unwrap();
+    let return_total = logic::get_invest_return(&ticker_prices, customer_data);
+    logic::output_result(return_total);
 
     Ok(())
 }

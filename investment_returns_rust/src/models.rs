@@ -61,3 +61,10 @@ pub struct TickerPrice {
     pub start_date: String,
     pub end_date: String,
 }
+
+#[derive(Debug)]
+pub struct PortfolioReturn {
+    pub start_total: f64,
+    pub current_total: f64,
+    pub contribution_total: f64,
+}
