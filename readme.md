@@ -1,4 +1,5 @@
 ## Portfolio Investment Returns
+A python and a rust solution to this problem:
 
 ![screenshot](/example_cli_use3.png)
 ```bash
