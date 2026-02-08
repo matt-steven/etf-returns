@@ -16,6 +16,22 @@ fn get_timeframe_days(timeframe_str: &str) -> Option<i64> {
     }
 }
 
+fn get_last_close_date(ticker_prices: &HashMap<String, f64>, start_date: NaiveDate) -> Option<NaiveDate> {
+    let mut last_date: Option<NaiveDate> = None;
+
+    for date_str in ticker_prices.keys() {
+        if let Ok(date) = NaiveDate::parse_from_str(date_str, "%Y-%m-%d") {
+            if date < start_date {
+                if last_date.is_none() || date > last_date.unwrap() {
+                    last_date = Some(date);
+                }
+            }
+        }
+    }
+
+    last_date
+}
+
 fn handle_ticker_change(
     ticker_changes: &HashMap<String, Vec<Vec<String>>>,
     prices: &mut HashMap<String, HashMap<String, f64>>,
@@ -54,18 +70,30 @@ pub fn get_ticker_prices_for_timeframe(data: &mut Data, args: &Args) -> Result<H
 
     for (ticker, purchases) in customer_data.iter_mut() {
         let mut aka_tickers: Vec<String> = Vec::new();
-        let ticker_start_date = start_date;
+        let mut ticker_start_date = start_date;
 
         // Ticker change handling
          if data.ticker_changes.contains_key(ticker) {
-            aka_tickers = handle_ticker_change(&data.ticker_changes,&mut data.prices, ticker);
+            aka_tickers = handle_ticker_change(&data.ticker_changes, &mut data.prices, ticker);
         }
         aka_tickers.push(ticker.clone());
 
-        println!("{:?}", aka_tickers)
+        let start_date_str = ticker_start_date.format("%Y-%m-%d").to_string();
+        if let Some(ticker_price_data) = data.prices.get(ticker) {
+            // Find last close price if current one is weekend or holiday
+            if !ticker_price_data.contains_key(&start_date_str) {
+                ticker_start_date = get_last_close_date(ticker_price_data, ticker_start_date)
+                .ok_or("Requested period not found for ticker")?;
+            }
 
+            let end_date_str = end_date.format("%Y-%m-%d").to_string();
+            let start_date_str = ticker_start_date.format("%Y-%m-%d").to_string();
+            let end_close_price = ticker_price_data[&end_date_str];
+            let mut start_close_price = ticker_price_data[&start_date_str];
+
+            println!("{:?} - {:?}",end_close_price, start_close_price)
+        }
     }
-
 
     Ok(ticker_prices)
 }
