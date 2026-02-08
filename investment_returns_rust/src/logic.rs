@@ -9,7 +9,7 @@ use crate::models::PortfolioPurchase;
 use crate::models::PortfolioReturn;
 
 
-fn get_timeframe_days(timeframe_str: &str) -> Option<i64> {
+pub fn get_timeframe_days(timeframe_str: &str) -> Option<i64> {
     match timeframe_str {
         "1 day" => Some(1),
         "5 days" => Some(5),
