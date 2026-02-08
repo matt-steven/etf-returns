@@ -306,9 +306,12 @@ def unittest_setup():
     global price_data
     global splits_data
     global ticker_changes_data
+    global portfolio_data
     price_data = None
     splits_data = None
     ticker_changes_data = None
+    portfolio_data = None
     price_data = read_price_input()
     splits_data = read_splits_input()
     ticker_changes_data = read_ticker_changes_input()
+    portfolio_data = read_portfolio_input()
